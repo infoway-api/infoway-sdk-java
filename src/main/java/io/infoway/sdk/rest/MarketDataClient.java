@@ -65,7 +65,7 @@ public abstract class MarketDataClient {
         JsonObject body = new JsonObject();
         body.addProperty("codes", codes);
         body.addProperty("klineType", klineType);
-        body.addProperty("klineCount", count);
+        body.addProperty("klineNum", count);
         return http.post("/" + prefix + "/v2/batch_kline", body);
     }
 }

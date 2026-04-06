@@ -102,7 +102,7 @@ class StockClientTest {
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"codes\":\"AAPL.US\""));
         assertTrue(body.contains("\"klineType\":8"));
-        assertTrue(body.contains("\"klineCount\":100"));
+        assertTrue(body.contains("\"klineNum\":100"));
     }
 
     @Test
@@ -116,7 +116,7 @@ class StockClientTest {
         RecordedRequest request = server.takeRequest();
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"klineType\":5"));
-        assertTrue(body.contains("\"klineCount\":50"));
+        assertTrue(body.contains("\"klineNum\":50"));
     }
 
     @Test
