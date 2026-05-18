@@ -138,18 +138,29 @@ ws.close();
 
 ### WebSocket Codes
 
+Client → server:
+
 | Code | Name | Description |
 |------|------|-------------|
 | 10000 | SUB_TRADE | Subscribe trade |
-| 10001 | PUSH_TRADE | Trade push |
-| 10002 | UNSUB_TRADE | Unsubscribe trade |
 | 10003 | SUB_DEPTH | Subscribe depth |
-| 10004 | PUSH_DEPTH | Depth push |
-| 10005 | UNSUB_DEPTH | Unsubscribe depth |
-| 10006 | SUB_KLINE | Subscribe kline |
-| 10007 | PUSH_KLINE | Kline push |
-| 10008 | UNSUB_KLINE | Unsubscribe kline |
-| 10010 | HEARTBEAT | Heartbeat |
+| 10006 | SUB_KLINE | Subscribe kline (payload `data.arr=[{codes, type}]`) |
+| 10010 | HEARTBEAT | Heartbeat keepalive |
+| 11000 | UNSUB_TRADE | Unsubscribe trade |
+| 11001 | UNSUB_DEPTH | Unsubscribe depth |
+| 11002 | UNSUB_KLINE | Unsubscribe kline |
+
+Server → client:
+
+| Code | Name | Description |
+|------|------|-------------|
+| 10001 | SUB_TRADE_ACK | Trade subscribe acknowledgement |
+| 10002 | PUSH_TRADE | **Real-time trade push** |
+| 10004 | SUB_DEPTH_ACK | Depth subscribe acknowledgement |
+| 10005 | PUSH_DEPTH | **Real-time depth push** |
+| 10007 | SUB_KLINE_ACK | Kline subscribe acknowledgement |
+| 10008 | PUSH_KLINE | **Real-time kline push** |
+| 11010 | UNSUB_ACK | Unsubscribe acknowledgement |
 
 ### K-line Types
 

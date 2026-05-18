@@ -149,10 +149,28 @@ class StockClientTest {
 
     @Test
     void wsCodeEnumValues() {
+        // outbound subscribe
         assertEquals(10000, WsCode.SUB_TRADE.getCode());
-        assertEquals(10001, WsCode.PUSH_TRADE.getCode());
+        assertEquals(10003, WsCode.SUB_DEPTH.getCode());
+        assertEquals(10006, WsCode.SUB_KLINE.getCode());
+        // inbound acks
+        assertEquals(10001, WsCode.SUB_TRADE_ACK.getCode());
+        assertEquals(10004, WsCode.SUB_DEPTH_ACK.getCode());
+        assertEquals(10007, WsCode.SUB_KLINE_ACK.getCode());
+        // inbound pushes — the real data
+        assertEquals(10002, WsCode.PUSH_TRADE.getCode());
+        assertEquals(10005, WsCode.PUSH_DEPTH.getCode());
+        assertEquals(10008, WsCode.PUSH_KLINE.getCode());
+        // outbound unsubscribe (11000 range)
+        assertEquals(11000, WsCode.UNSUB_TRADE.getCode());
+        assertEquals(11001, WsCode.UNSUB_DEPTH.getCode());
+        assertEquals(11002, WsCode.UNSUB_KLINE.getCode());
+        assertEquals(11010, WsCode.UNSUB_ACK.getCode());
+        // heartbeat
         assertEquals(10010, WsCode.HEARTBEAT.getCode());
-        assertEquals(WsCode.PUSH_DEPTH, WsCode.fromCode(10004));
+        // lookup
+        assertEquals(WsCode.PUSH_DEPTH, WsCode.fromCode(10005));
+        assertEquals(WsCode.PUSH_TRADE, WsCode.fromCode(10002));
         assertNull(WsCode.fromCode(99999));
     }
 }

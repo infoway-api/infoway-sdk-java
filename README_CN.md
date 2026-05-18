@@ -138,18 +138,29 @@ ws.close();
 
 ### WebSocket 消息码
 
+客户端 → 服务器：
+
 | 码值 | 名称 | 说明 |
 |------|------|------|
 | 10000 | SUB_TRADE | 订阅成交 |
-| 10001 | PUSH_TRADE | 成交推送 |
-| 10002 | UNSUB_TRADE | 取消订阅成交 |
 | 10003 | SUB_DEPTH | 订阅盘口 |
-| 10004 | PUSH_DEPTH | 盘口推送 |
-| 10005 | UNSUB_DEPTH | 取消订阅盘口 |
-| 10006 | SUB_KLINE | 订阅K线 |
-| 10007 | PUSH_KLINE | K线推送 |
-| 10008 | UNSUB_KLINE | 取消订阅K线 |
-| 10010 | HEARTBEAT | 心跳 |
+| 10006 | SUB_KLINE | 订阅K线（payload `data.arr=[{codes, type}]`）|
+| 10010 | HEARTBEAT | 心跳保活 |
+| 11000 | UNSUB_TRADE | 取消订阅成交 |
+| 11001 | UNSUB_DEPTH | 取消订阅盘口 |
+| 11002 | UNSUB_KLINE | 取消订阅K线 |
+
+服务器 → 客户端：
+
+| 码值 | 名称 | 说明 |
+|------|------|------|
+| 10001 | SUB_TRADE_ACK | 成交订阅确认 |
+| 10002 | PUSH_TRADE | **实时成交推送** |
+| 10004 | SUB_DEPTH_ACK | 盘口订阅确认 |
+| 10005 | PUSH_DEPTH | **实时盘口推送** |
+| 10007 | SUB_KLINE_ACK | K线订阅确认 |
+| 10008 | PUSH_KLINE | **实时K线推送** |
+| 11010 | UNSUB_ACK | 取消订阅确认 |
 
 ### K线类型
 
