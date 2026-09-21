@@ -8,7 +8,8 @@ package io.infoway.sdk;
  *   <li>{@link #SUB_TRADE} (10000) — subscribe trade</li>
  *   <li>{@link #SUB_DEPTH} (10003) — subscribe depth</li>
  *   <li>{@link #SUB_KLINE} (10006) — subscribe kline (requires data.arr=[{codes,type}])</li>
- *   <li>{@link #HEARTBEAT} (10010) — heartbeat keepalive</li>
+ *   <li>{@link #HEARTBEAT} (10010) — heartbeat keepalive. The server replies
+ *       {@link #HEART_APPLY} (10011) only when the client also sends {@code ack=1}.</li>
  *   <li>{@link #UNSUB_TRADE} / {@link #UNSUB_DEPTH} / {@link #UNSUB_KLINE} (11000/11001/11002)</li>
  * </ul>
  *
@@ -18,7 +19,10 @@ package io.infoway.sdk;
  *       one-shot subscription confirmations ({"msg":"ok"})</li>
  *   <li>{@link #PUSH_TRADE} (10002), {@link #PUSH_DEPTH} (10005), {@link #PUSH_KLINE} (10008) —
  *       real-time data pushes (high frequency)</li>
- *   <li>{@link #UNSUB_ACK} (11010) — unsubscribe confirmation</li>
+ *   <li>{@link #HEART_APPLY} (10011) — optional heartbeat ack</li>
+ *   <li>{@link #UNSUB_ACK} (11010) — unsubscribe confirmation (trade / depth / kline / news)</li>
+ *   <li>{@link #SUB_NEWS_ACK} (10021), {@link #PUSH_NEWS} (10022) — news channel
+ *       ({@code wss://data.infoway.io/news}, see {@link InfowayNewsWebSocket})</li>
  * </ul>
  */
 public enum WsCode {
@@ -28,8 +32,14 @@ public enum WsCode {
     SUB_DEPTH(10003),
     SUB_KLINE(10006),
 
+    // Outbound — news (separate /news endpoint)
+    SUB_NEWS(10020),
+    UNSUB_NEWS(11020),
+
     // Outbound — heartbeat
     HEARTBEAT(10010),
+    // Inbound — heartbeat ack (only if the client sent ack=1)
+    HEART_APPLY(10011),
 
     // Outbound — unsubscribe
     UNSUB_TRADE(11000),
@@ -45,6 +55,10 @@ public enum WsCode {
     PUSH_TRADE(10002),
     PUSH_DEPTH(10005),
     PUSH_KLINE(10008),
+
+    // Inbound — news
+    SUB_NEWS_ACK(10021),
+    PUSH_NEWS(10022),
 
     // Inbound — unsubscribe ack
     UNSUB_ACK(11010);

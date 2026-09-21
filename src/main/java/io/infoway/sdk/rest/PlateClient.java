@@ -2,6 +2,7 @@ package io.infoway.sdk.rest;
 
 import com.google.gson.JsonElement;
 import io.infoway.sdk.HttpClient;
+import io.infoway.sdk.Market;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -40,6 +41,14 @@ public class PlateClient {
         return getIndustry(market, 200);
     }
 
+    public JsonElement getIndustry(Market market, int limit) {
+        return getIndustry(market != null ? market.value() : null, limit);
+    }
+
+    public JsonElement getIndustry(Market market) {
+        return getIndustry(market, 200);
+    }
+
     /**
      * Get concept plates for a market.
      *
@@ -60,6 +69,14 @@ public class PlateClient {
      * @return concept data as a JsonElement
      */
     public JsonElement getConcept(String market) {
+        return getConcept(market, 100);
+    }
+
+    public JsonElement getConcept(Market market, int limit) {
+        return getConcept(market != null ? market.value() : null, limit);
+    }
+
+    public JsonElement getConcept(Market market) {
         return getConcept(market, 100);
     }
 
@@ -118,6 +135,14 @@ public class PlateClient {
      * @return chart data as a JsonElement
      */
     public JsonElement getChart(String market) {
+        return getChart(market, 50);
+    }
+
+    public JsonElement getChart(Market market, int limit) {
+        return getChart(market != null ? market.value() : null, limit);
+    }
+
+    public JsonElement getChart(Market market) {
         return getChart(market, 50);
     }
 }

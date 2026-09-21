@@ -4,8 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.infoway.sdk.exception.InfowayApiException;
+import io.infoway.sdk.exception.InfowayRateLimitException;
 import io.infoway.sdk.exception.InfowayAuthException;
 import io.infoway.sdk.exception.InfowayTimeoutException;
+import io.infoway.sdk.exception.InfowayIoException;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -42,7 +44,7 @@ public class HttpClient implements Closeable {
     private final Gson gson;
 
     HttpClient(String apiKey, String baseUrl, long timeoutSeconds, int maxRetries) {
-        this.apiKey = apiKey != null ? apiKey : System.getenv().getOrDefault("INFOWAY_API_KEY", "");
+        this.apiKey = ApiKeys.resolve(apiKey);
         this.baseUrl = baseUrl != null ? baseUrl.replaceAll("/+$", "") : DEFAULT_BASE_URL;
         this.maxRetries = maxRetries > 0 ? maxRetries : DEFAULT_MAX_RETRIES;
         this.gson = new Gson();
@@ -105,6 +107,10 @@ public class HttpClient implements Closeable {
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try (Response response = client.newCall(request).execute()) {
                 return handleResponse(response);
+            } catch (InfowayRateLimitException e) {
+                // rate limiting is transient — back off and retry, rethrow if retries run out
+                lastException = e;
+                log.debug("Rate limited (attempt {}/{}): {}", attempt + 1, maxRetries, e.getMsg());
             } catch (InfowayApiException e) {
                 throw e;
             } catch (SocketTimeoutException e) {
@@ -122,37 +128,167 @@ public class HttpClient implements Closeable {
                 }
             }
         }
+        if (lastException instanceof InfowayRateLimitException) {
+            throw (InfowayRateLimitException) lastException;
+        }
         if (lastException instanceof InfowayTimeoutException) {
             throw (InfowayTimeoutException) lastException;
         }
-        throw new RuntimeException("Request failed after " + maxRetries + " retries", lastException);
+        throw new InfowayIoException("Request failed after " + maxRetries + " retries", lastException);
     }
 
+    /**
+     * Turn a raw HTTP response into either the payload or a typed exception.
+     *
+     * <p>The order below is load-bearing (see docs/specs/2026-08-15-sdk-contract-fix-design.md §1).
+     * Production serves five different envelopes and only two of them carry {@code ret}/{@code code};
+     * the previous implementation defaulted the missing status to 200, judged every error a success
+     * and returned {@code null} for it.</p>
+     *
+     * <ol>
+     *   <li>HTTP 401 → {@link InfowayAuthException}</li>
+     *   <li>HTTP 429 → {@link InfowayRateLimitException}</li>
+     *   <li>body has {@code detail} but no {@code ret}/{@code code}/{@code data}:
+     *       "rate limit" in the detail → {@link InfowayRateLimitException} (status may be 200!),
+     *       otherwise {@link InfowayApiException}</li>
+     *   <li>body has {@code title} + {@code status} (RFC 7807 problem+json) → {@link InfowayApiException}</li>
+     *   <li>{@code ret}/{@code code} present and != 200 → classified with {@link RestErrorCode}
+     *       (501/502 → {@link InfowayRateLimitException}). Runs <em>before</em> the HTTP-status
+     *       branch so commonApi HTTP 400 bodies keep their {@code msg}.</li>
+     *   <li>HTTP &gt;= 400 with no business {@code ret} → {@link InfowayApiException} (gateway pages)</li>
+     *   <li>success: return {@code body["data"]} when present, otherwise the whole body</li>
+     * </ol>
+     */
     private JsonElement handleResponse(Response response) throws IOException {
-        if (response.code() == 401) {
-            throw new InfowayAuthException();
-        }
-        String responseBody = response.body() != null ? response.body().string() : "{}";
-        JsonObject data = gson.fromJson(responseBody, JsonObject.class);
+        int status = response.code();
+        String responseBody = response.body() != null ? response.body().string() : "";
+        JsonElement parsed = parseJson(responseBody);
+        JsonObject body = parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+        String traceId = optString(body, "traceId");
 
-        int ret = 200;
-        if (data.has("ret")) {
-            ret = data.get("ret").getAsInt();
-        } else if (data.has("code")) {
-            ret = data.get("code").getAsInt();
+        // 1 — HTTP 401. The body uses "message", not "msg".
+        if (status == 401) {
+            throw new InfowayAuthException(errorMessage(body, responseBody, "Unauthorized"));
         }
 
-        String msg = data.has("msg") ? data.get("msg").getAsString() : "";
-        String traceId = data.has("traceId") ? data.get("traceId").getAsString() : null;
+        // 2 — HTTP 429.
+        if (status == 429) {
+            throw InfowayRateLimitException.rest(429,
+                    errorMessage(body, responseBody, "Rate limit exceeded"), traceId);
+        }
 
+        // 3 — bare {"detail": ...} envelope (no ret/code/data). Status is often 200.
+        if (body != null && body.has("detail")
+                && !body.has("ret") && !body.has("code") && !body.has("data")) {
+            String detail = optString(body, "detail");
+            if (detail != null && detail.toLowerCase().contains("rate limit")) {
+                throw new InfowayRateLimitException(status, detail, traceId, "RATE_LIMIT");
+            }
+            throw InfowayApiException.ofHttpStatus(status, detail, traceId);
+        }
+
+        // 4 — RFC 7807 problem+json: {"type","title","status","detail","instance"}.
+        if (body != null && body.has("title") && body.has("status")) {
+            int problemStatus = optInt(body, "status", status);
+            String detail = body.has("detail") ? optString(body, "detail") : optString(body, "title");
+            throw InfowayApiException.ofHttpStatus(problemStatus, detail, traceId);
+        }
+
+        // 5 — business status. commonApi sets HTTP 400/500 with the same ret in the body.
+        Integer ret = businessRet(body);
+        if (ret != null && ret != 200) {
+            throw restFailure(ret, errorMessage(body, responseBody, "API error"), traceId);
+        }
+
+        // 6 — any other HTTP error, including non-JSON gateway pages and empty bodies.
+        if (status >= 400) {
+            throw InfowayApiException.ofHttpStatus(status, bodySnippet(responseBody, status), traceId);
+        }
+
+        // 7 — success.
+        if (body == null) {
+            if (parsed != null && parsed.isJsonArray()) {
+                return parsed;   // no endpoint does this today, but it is valid JSON payload
+            }
+            throw new InfowayApiException(status, "Non-JSON response: " + bodySnippet(responseBody, status), traceId);
+        }
+        return body.has("data") ? body.get("data") : body;
+    }
+
+    private static Integer businessRet(JsonObject body) {
+        if (body == null) {
+            return null;
+        }
+        if (body.has("ret") && body.get("ret").isJsonPrimitive()) {
+            return optInt(body, "ret", 200);
+        }
+        if (body.has("code") && body.get("code").isJsonPrimitive()) {
+            return optInt(body, "code", 200);
+        }
+        return null;
+    }
+
+    private static InfowayApiException restFailure(int ret, String msg, String traceId) {
         if (ret == 401) {
-            throw new InfowayAuthException(msg);
+            return new InfowayAuthException(msg);
         }
-        if (ret != 200) {
-            throw new InfowayApiException(ret, msg, traceId);
+        if (ret == 429
+                || ret == RestErrorCode.REQUEST_EXCEED_LIMIT.getCode()
+                || ret == RestErrorCode.REQUEST_FOR_DAY_LIMIT.getCode()) {
+            return InfowayRateLimitException.rest(ret, msg, traceId);
         }
+        return InfowayApiException.ofRest(ret, msg, traceId);
+    }
 
-        return data.has("data") ? data.get("data") : null;
+    private JsonElement parseJson(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return gson.fromJson(text, JsonElement.class);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Reads msg / message / detail / title — the four names production uses for errors. */
+    private static String errorMessage(JsonObject body, String rawBody, String fallback) {
+        if (body != null) {
+            for (String key : new String[]{"msg", "message", "detail", "title"}) {
+                String value = optString(body, key);
+                if (value != null && !value.isEmpty()) {
+                    return value;
+                }
+            }
+        }
+        if (rawBody != null && !rawBody.isBlank()) {
+            return fallback + ": " + bodySnippet(rawBody, 0);
+        }
+        return fallback;
+    }
+
+    private static String bodySnippet(String rawBody, int status) {
+        if (rawBody == null || rawBody.isBlank()) {
+            return "HTTP " + status + " with empty body";
+        }
+        String trimmed = rawBody.trim();
+        return trimmed.length() > 300 ? trimmed.substring(0, 300) + "…" : trimmed;
+    }
+
+    private static String optString(JsonObject body, String key) {
+        if (body == null || !body.has(key) || body.get(key).isJsonNull()) {
+            return null;
+        }
+        JsonElement value = body.get(key);
+        return value.isJsonPrimitive() ? value.getAsString() : value.toString();
+    }
+
+    private static int optInt(JsonObject body, String key, int fallback) {
+        try {
+            return body.get(key).getAsInt();
+        } catch (RuntimeException e) {
+            return fallback;
+        }
     }
 
     /**

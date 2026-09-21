@@ -132,13 +132,17 @@ class HttpClientTest {
     }
 
     @Test
-    void returnsNullWhenNoDataField() throws Exception {
+    void returnsWholeBodyWhenNoDataField() throws Exception {
+        // changed in 0.2.0: several v2 endpoints answer without a "data" key
+        // (e.g. plate/intro) and used to be swallowed into null.
         server.enqueue(new MockResponse()
                 .setBody("{\"ret\":200,\"msg\":\"success\"}")
                 .addHeader("Content-Type", "application/json"));
 
         JsonElement result = client.get("/test");
-        assertNull(result);
+
+        assertNotNull(result);
+        assertEquals("success", result.getAsJsonObject().get("msg").getAsString());
     }
 
     @Test

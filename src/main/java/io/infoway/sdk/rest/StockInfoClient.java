@@ -2,12 +2,13 @@ package io.infoway.sdk.rest;
 
 import com.google.gson.JsonElement;
 import io.infoway.sdk.HttpClient;
-
-import java.util.HashMap;
-import java.util.Map;
+import io.infoway.sdk.Lang;
 
 /**
  * Stock fundamental data client (valuation, ratings, company info).
+ *
+ * <p>Every method accepts an optional {@code lang} ({@code en} / {@code zh-CN}) for
+ * name-like fields. Valuation and ratings are numeric and ignore {@code lang}.</p>
  */
 public class StockInfoClient {
 
@@ -17,86 +18,92 @@ public class StockInfoClient {
         this.http = http;
     }
 
-    /**
-     * Get valuation data for a symbol.
-     *
-     * @param symbol symbol code (e.g. "AAPL.US")
-     * @return valuation data as a JsonElement
-     */
     public JsonElement getValuation(String symbol) {
-        return http.get("/common/v2/basic/stock/valuation/" + symbol);
+        return getValuation(symbol, (String) null);
     }
 
-    /**
-     * Get analyst ratings for a symbol.
-     *
-     * @param symbol symbol code
-     * @return ratings data as a JsonElement
-     */
+    public JsonElement getValuation(String symbol, String lang) {
+        return http.get("/common/v2/basic/stock/valuation/" + symbol, Query.of("lang", lang));
+    }
+
+    public JsonElement getValuation(String symbol, Lang lang) {
+        return getValuation(symbol, lang != null ? lang.value() : null);
+    }
+
     public JsonElement getRatings(String symbol) {
-        return http.get("/common/v2/basic/stock/ratings/" + symbol);
+        return getRatings(symbol, (String) null);
     }
 
-    /**
-     * Get company information for a symbol.
-     *
-     * @param symbol symbol code
-     * @return company data as a JsonElement
-     */
+    public JsonElement getRatings(String symbol, String lang) {
+        return http.get("/common/v2/basic/stock/ratings/" + symbol, Query.of("lang", lang));
+    }
+
+    public JsonElement getRatings(String symbol, Lang lang) {
+        return getRatings(symbol, lang != null ? lang.value() : null);
+    }
+
     public JsonElement getCompany(String symbol) {
-        return http.get("/common/v2/basic/stock/company/" + symbol);
+        return getCompany(symbol, (String) null);
     }
 
-    /**
-     * Get panorama (overview) data for a symbol.
-     *
-     * @param symbol symbol code
-     * @return panorama data as a JsonElement
-     */
+    public JsonElement getCompany(String symbol, String lang) {
+        return http.get("/common/v2/basic/stock/company/" + symbol, Query.of("lang", lang));
+    }
+
+    public JsonElement getCompany(String symbol, Lang lang) {
+        return getCompany(symbol, lang != null ? lang.value() : null);
+    }
+
     public JsonElement getPanorama(String symbol) {
-        return http.get("/common/v2/basic/stock/panorama/" + symbol);
+        return getPanorama(symbol, (String) null);
     }
 
-    /**
-     * Get concept tags for a symbol.
-     *
-     * @param symbol symbol code
-     * @return concepts data as a JsonElement
-     */
+    public JsonElement getPanorama(String symbol, String lang) {
+        return http.get("/common/v2/basic/stock/panorama/" + symbol, Query.of("lang", lang));
+    }
+
+    public JsonElement getPanorama(String symbol, Lang lang) {
+        return getPanorama(symbol, lang != null ? lang.value() : null);
+    }
+
     public JsonElement getConcepts(String symbol) {
-        return http.get("/common/v2/basic/stock/concepts/" + symbol);
+        return getConcepts(symbol, (String) null);
     }
 
-    /**
-     * Get events for a symbol.
-     *
-     * @param symbol symbol code
-     * @param limit  max number of events
-     * @return events data as a JsonElement
-     */
+    public JsonElement getConcepts(String symbol, String lang) {
+        return http.get("/common/v2/basic/stock/concepts/" + symbol, Query.of("lang", lang));
+    }
+
+    public JsonElement getConcepts(String symbol, Lang lang) {
+        return getConcepts(symbol, lang != null ? lang.value() : null);
+    }
+
     public JsonElement getEvents(String symbol, int limit) {
-        Map<String, String> params = new HashMap<>();
-        params.put("limit", String.valueOf(limit));
-        return http.get("/common/v2/basic/stock/events/" + symbol, params);
+        return getEvents(symbol, limit, (String) null);
     }
 
-    /**
-     * Get events with default limit (20).
-     *
-     * @param symbol symbol code
-     * @return events data as a JsonElement
-     */
+    public JsonElement getEvents(String symbol, int limit, String lang) {
+        return http.get("/common/v2/basic/stock/events/" + symbol,
+                Query.of("limit", String.valueOf(limit), "lang", lang));
+    }
+
+    public JsonElement getEvents(String symbol, int limit, Lang lang) {
+        return getEvents(symbol, limit, lang != null ? lang.value() : null);
+    }
+
     public JsonElement getEvents(String symbol) {
         return getEvents(symbol, 20);
     }
 
-    /**
-     * Get price drivers for a symbol.
-     *
-     * @param symbol symbol code
-     * @return drivers data as a JsonElement
-     */
     public JsonElement getDrivers(String symbol) {
-        return http.get("/common/v2/basic/stock/drivers/" + symbol);
+        return getDrivers(symbol, (String) null);
+    }
+
+    public JsonElement getDrivers(String symbol, String lang) {
+        return http.get("/common/v2/basic/stock/drivers/" + symbol, Query.of("lang", lang));
+    }
+
+    public JsonElement getDrivers(String symbol, Lang lang) {
+        return getDrivers(symbol, lang != null ? lang.value() : null);
     }
 }
