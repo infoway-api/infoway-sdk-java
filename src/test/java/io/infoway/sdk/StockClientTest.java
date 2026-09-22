@@ -3,6 +3,7 @@ package io.infoway.sdk;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import io.infoway.sdk.exception.InfowayApiException;
 import io.infoway.sdk.model.Depth;
 import io.infoway.sdk.model.Kline;
 import io.infoway.sdk.model.Trade;
@@ -283,5 +284,39 @@ class StockClientTest {
         assertEquals(WsCode.PUSH_DEPTH, WsCode.fromCode(10005));
         assertEquals(WsCode.PUSH_TRADE, WsCode.fromCode(10002));
         assertNull(WsCode.fromCode(99999));
+    }
+
+    @Test
+    void tooManySymbolsIsRejectedLocally() {
+        StringBuilder codes = new StringBuilder();
+        for (int i = 0; i < QuoteLimits.MAX_SYMBOLS + 1; i++) {
+            if (i > 0) {
+                codes.append(',');
+            }
+            codes.append('S').append(i).append(".US");
+        }
+        InfowayApiException trade = assertThrows(InfowayApiException.class,
+                () -> stockClient.getTrade(codes.toString()));
+        assertEquals(505, trade.getRet());
+        assertEquals("PRODUCTS_EXCEEDS_LIMIT", trade.getErrorName());
+        assertEquals(0, server.getRequestCount());
+
+        InfowayApiException depth = assertThrows(InfowayApiException.class,
+                () -> stockClient.getDepth(codes.toString()));
+        assertEquals(505, depth.getRet());
+    }
+
+    @Test
+    void klineOverLimitAndMultiSymbolAreRejectedLocally() {
+        InfowayApiException bars = assertThrows(InfowayApiException.class,
+                () -> stockClient.getKline("AAPL.US", KlineType.MIN_1, QuoteLimits.MAX_KLINE_BARS + 1));
+        assertEquals(503, bars.getRet());
+        assertEquals("KLINE_EXCEEDS_LIMIT", bars.getErrorName());
+
+        InfowayApiException batch = assertThrows(InfowayApiException.class,
+                () -> stockClient.getKline("AAPL.US,TSLA.US", KlineType.MIN_1, 3));
+        assertEquals(506, batch.getRet());
+        assertEquals("PARAM_ERROR", batch.getErrorName());
+        assertEquals(0, server.getRequestCount());
     }
 }

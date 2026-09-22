@@ -1,7 +1,8 @@
 package io.infoway.sdk;
 
 /**
- * Business {@code ret} values from the HTTP quote service and the
+ * Business {@code ret} values from the HTTP quote service
+ * ({@code ResponceCodeEnum} on {@code infoway-httpApi-server}) and the
  * {@code 200}/{@code 400}/{@code 500} envelope used by {@code /common/basic/*}.
  *
  * <p>These numbers overlap WebSocket {@link WsErrorCode} for 508–514 but
@@ -51,5 +52,32 @@ public enum RestErrorCode {
             }
         }
         return null;
+    }
+
+    /**
+     * Production sometimes wraps a business failure as {@code ret=500} while
+     * {@code msg} is still the English template from {@code ResponceCodeEnum}.
+     * The httpApi service itself puts 503/505/513 on {@code ret}; this keeps
+     * both shapes distinguishable.
+     *
+     * @param ret wire {@code ret}
+     * @param msg wire {@code msg}
+     * @return the specific business code when {@code ret} is 500 and {@code msg}
+     *         starts with a known template; otherwise {@code ret}
+     */
+    public static int classify(int ret, String msg) {
+        if (ret != SERVER_ERROR.code || msg == null || msg.isBlank()) {
+            return ret;
+        }
+        String text = msg.strip().toLowerCase(java.util.Locale.ROOT);
+        for (RestErrorCode value : values()) {
+            if (value == SUCCESS || value == BAD_REQUEST || value == SERVER_ERROR) {
+                continue;
+            }
+            if (text.startsWith(value.label.toLowerCase(java.util.Locale.ROOT))) {
+                return value.code;
+            }
+        }
+        return ret;
     }
 }

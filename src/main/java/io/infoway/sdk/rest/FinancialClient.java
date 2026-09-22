@@ -3,7 +3,9 @@ package io.infoway.sdk.rest;
 import com.google.gson.JsonElement;
 import io.infoway.sdk.HttpClient;
 import io.infoway.sdk.PeriodType;
+import io.infoway.sdk.RestErrorCode;
 import io.infoway.sdk.SymbolType;
+import io.infoway.sdk.exception.InfowayApiException;
 
 /**
  * Stock financial statements and earnings.
@@ -151,6 +153,12 @@ public class FinancialClient {
     }
 
     private JsonElement get(String path, String symbol, String type, String periodType) {
+        if (SymbolType.fromValue(type) == null) {
+            throw InfowayApiException.ofRest(
+                    RestErrorCode.PARAM_ERROR.getCode(),
+                    "Param error：type",
+                    null);
+        }
         return http.get(path, Query.of(
                 "symbol", symbol,
                 "type", type,

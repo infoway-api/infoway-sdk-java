@@ -1,6 +1,7 @@
 package io.infoway.sdk;
 
 import com.google.gson.JsonObject;
+import io.infoway.sdk.exception.InfowayApiException;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
@@ -326,5 +327,52 @@ class WebSocketLifecycleTest {
         } finally {
             news.close();
         }
+    }
+
+    @Test
+    void newsAlreadyConnectedDoesNotReconnect() throws Exception {
+        ServerSide first = upgrade();
+        List<Exception> errors = new CopyOnWriteArrayList<>();
+        AtomicInteger reconnects = new AtomicInteger();
+        InfowayNewsWebSocket news = InfowayNewsWebSocket.builder()
+                .apiKey("test-key")
+                .lang(NewsLang.EN)
+                .baseUrl(server.url("/news").toString())
+                .onError(errors::add)
+                .onReconnect(reconnects::incrementAndGet)
+                .build();
+        news.testTiming(80, 20);
+        try {
+            news.connect();
+            assertTrue(first.awaitOpen());
+            assertNotNull(first.socket);
+            first.socket.send("{\"code\":520,\"msg\":\"apikey already connected\"}");
+            awaitUntil(() -> errors.stream().anyMatch(e ->
+                    e instanceof InfowayApiException && ((InfowayApiException) e).getRet() == 520));
+            Thread.sleep(200);
+            assertEquals(0, reconnects.get());
+            assertEquals(1, server.getRequestCount());
+        } finally {
+            news.close();
+        }
+    }
+
+    @Test
+    void quoteConnectionCapDoesNotReconnect() throws Exception {
+        ServerSide first = upgrade();
+        List<Exception> errors = new CopyOnWriteArrayList<>();
+        AtomicInteger reconnects = new AtomicInteger();
+        ws = newClient();
+        ws.setOnError(errors::add);
+        ws.setOnReconnect(reconnects::incrementAndGet);
+        ws.connect();
+        assertTrue(first.awaitOpen());
+        assertNotNull(first.socket);
+        first.socket.send("{\"code\":512,\"msg\":\"WebSocket connections exceeds the limit：10\"}");
+        awaitUntil(() -> errors.stream().anyMatch(e ->
+                e instanceof InfowayApiException && ((InfowayApiException) e).getRet() == 512));
+        Thread.sleep(200);
+        assertEquals(0, reconnects.get());
+        assertEquals(1, server.getRequestCount());
     }
 }

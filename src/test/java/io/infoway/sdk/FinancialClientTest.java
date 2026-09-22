@@ -1,5 +1,6 @@
 package io.infoway.sdk;
 
+import io.infoway.sdk.exception.InfowayApiException;
 import io.infoway.sdk.rest.FinancialClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -110,5 +111,18 @@ class FinancialClientTest {
         String earnings = server.takeRequest().getPath();
         assertTrue(earnings.startsWith("/common/basic/financial/earnings?"), earnings);
         assertTrue(earnings.contains("period_type=fq"), earnings);
+    }
+
+    @Test
+    void unknownTypeIsRejectedBeforeTheRequest() {
+        InfowayApiException ex = assertThrows(InfowayApiException.class,
+                () -> financial.getEarningStatus("AAPL.US", "NOT_A_SYMBOL_TYPE"));
+        assertEquals(506, ex.getRet());
+        assertEquals("PARAM_ERROR", ex.getErrorName());
+        assertEquals(0, server.getRequestCount());
+
+        assertThrows(InfowayApiException.class,
+                () -> financial.getEarningStatus("AAPL.US", "US"));
+        assertEquals(0, server.getRequestCount());
     }
 }

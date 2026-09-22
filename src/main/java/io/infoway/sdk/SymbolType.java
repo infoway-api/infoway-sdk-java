@@ -28,4 +28,17 @@ public enum SymbolType {
     public String value() {
         return name();
     }
+
+    /** {@code null} when {@code value} is not one of the enum names. */
+    public static SymbolType fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (SymbolType type : values()) {
+            if (type.name().equals(value)) {
+                return type;
+            }
+        }
+        return null;
+    }
 }

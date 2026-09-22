@@ -155,4 +155,38 @@ class HttpClientTest {
         assertNotNull(result);
         assertEquals(42, result.getAsJsonObject().get("value").getAsInt());
     }
+
+    @Test
+    void closeRejectsLaterCallsAndIsIdempotent() {
+        client.close();
+        client.close();
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> client.get("/test/path"));
+        assertTrue(ex.getMessage().contains("closed"));
+    }
+
+    @Test
+    void manyClientsDoNotLeaveNonDaemonOkHttpThreads() throws Exception {
+        HttpClient[] extra = new HttpClient[6];
+        try {
+            for (int i = 0; i < extra.length; i++) {
+                server.enqueue(new MockResponse().setBody("{\"ret\":200,\"data\":1}"));
+                extra[i] = HttpClient.builder()
+                        .apiKey("test-key")
+                        .baseUrl(server.url("/").toString())
+                        .maxRetries(1)
+                        .build();
+                extra[i].get("/n");
+            }
+        } finally {
+            for (HttpClient created : extra) {
+                if (created != null) {
+                    created.close();
+                }
+            }
+        }
+        long nonDaemonOkHttp = Thread.getAllStackTraces().keySet().stream()
+                .filter(thread -> !thread.isDaemon() && thread.getName().startsWith("OkHttp"))
+                .count();
+        assertEquals(0, nonDaemonOkHttp);
+    }
 }

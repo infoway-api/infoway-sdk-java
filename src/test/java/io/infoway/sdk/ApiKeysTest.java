@@ -14,6 +14,14 @@ class ApiKeysTest {
     }
 
     @Test
+    void explicitBlankIsNotReplacedByEnv() {
+        assertEquals("", ApiKeys.resolve(""));
+        assertEquals("", ApiKeys.resolve("   "));
+        assertThrows(IllegalArgumentException.class, () -> ApiKeys.require(""));
+        assertThrows(IllegalArgumentException.class, () -> ApiKeys.require("  "));
+    }
+
+    @Test
     void requireThrowsWhenBlankAndEnvMissing() {
         String env = System.getenv("INFOWAY_API_KEY");
         assumeTrue(env == null || env.isBlank(), "INFOWAY_API_KEY is set in this environment");

@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.infoway.sdk.HttpClient;
 import io.infoway.sdk.KlineType;
+import io.infoway.sdk.QuoteLimits;
 import io.infoway.sdk.model.Depth;
 import io.infoway.sdk.model.Kline;
 import io.infoway.sdk.model.Normalizer;
@@ -30,10 +31,13 @@ public abstract class MarketDataClient {
     /**
      * Get real-time trade data.
      *
-     * @param codes comma-separated symbol codes (e.g. "AAPL.US" or "AAPL.US,TSLA.US")
+     * @param codes comma-separated symbol codes (e.g. "AAPL.US" or "AAPL.US,TSLA.US").
+     *              More than {@link QuoteLimits#MAX_SYMBOLS} distinct symbols is rejected
+     *              locally with {@code ret} 505. That cap is not package {@code maxNum}.
      * @return trade data as a JsonElement
      */
     public JsonElement getTrade(String codes) {
+        QuoteLimits.checkSymbols(codes);
         return http.get("/" + prefix + "/batch_trade/" + codes);
     }
 
@@ -44,6 +48,7 @@ public abstract class MarketDataClient {
      * @return depth data as a JsonElement
      */
     public JsonElement getDepth(String codes) {
+        QuoteLimits.checkSymbols(codes);
         return http.get("/" + prefix + "/batch_depth/" + codes);
     }
 
@@ -52,7 +57,10 @@ public abstract class MarketDataClient {
      *
      * @param codes     comma-separated symbol codes
      * @param klineType K-line interval (use {@link KlineType} enum)
-     * @param count     number of candles to return
+     * @param count     number of candles to return. Above {@link QuoteLimits#MAX_KLINE_BARS}
+     *                  is rejected with {@code ret} 503. More than one symbol and a count
+     *                  above {@link QuoteLimits#MAX_KLINE_BARS_WHEN_BATCHED} is rejected
+     *                  with {@code ret} 506 instead of being silently truncated.
      * @return kline data as a JsonElement
      */
     public JsonElement getKline(String codes, KlineType klineType, int count) {
@@ -96,6 +104,7 @@ public abstract class MarketDataClient {
      * @return kline data as a JsonElement
      */
     public JsonElement getKline(String codes, int klineType, int count, Long timestamp) {
+        QuoteLimits.checkKline(codes, count);
         JsonObject body = new JsonObject();
         body.addProperty("codes", codes);
         body.addProperty("klineType", klineType);

@@ -8,6 +8,7 @@ import io.infoway.sdk.exception.InfowayRateLimitException;
 import io.infoway.sdk.exception.InfowayAuthException;
 import io.infoway.sdk.exception.InfowayTimeoutException;
 import io.infoway.sdk.exception.InfowayIoException;
+import okhttp3.Call;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -21,7 +22,9 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Low-level HTTP client with retry and error handling.
@@ -42,17 +45,15 @@ public class HttpClient implements Closeable {
     private final int maxRetries;
     private final OkHttpClient client;
     private final Gson gson;
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private final Set<Call> calls = ConcurrentHashMap.newKeySet();
 
     HttpClient(String apiKey, String baseUrl, long timeoutSeconds, int maxRetries) {
         this.apiKey = ApiKeys.resolve(apiKey);
         this.baseUrl = baseUrl != null ? baseUrl.replaceAll("/+$", "") : DEFAULT_BASE_URL;
         this.maxRetries = maxRetries > 0 ? maxRetries : DEFAULT_MAX_RETRIES;
         this.gson = new Gson();
-        this.client = new OkHttpClient.Builder()
-                .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .build();
+        this.client = HttpTransports.http(timeoutSeconds);
     }
 
     /**
@@ -105,8 +106,14 @@ public class HttpClient implements Closeable {
     private JsonElement execute(Request request) {
         Exception lastException = null;
         for (int attempt = 0; attempt < maxRetries; attempt++) {
-            try (Response response = client.newCall(request).execute()) {
+            ensureOpen();
+            Call call = client.newCall(request);
+            calls.add(call);
+            try (Response response = call.execute()) {
+                ensureOpen();
                 return handleResponse(response);
+            } catch (IllegalStateException e) {
+                throw e;
             } catch (InfowayRateLimitException e) {
                 // rate limiting is transient — back off and retry, rethrow if retries run out
                 lastException = e;
@@ -118,6 +125,8 @@ public class HttpClient implements Closeable {
             } catch (IOException e) {
                 lastException = e;
                 log.debug("Request failed (attempt {}/{}): {}", attempt + 1, maxRetries, e.getMessage());
+            } finally {
+                calls.remove(call);
             }
             if (attempt < maxRetries - 1) {
                 try {
@@ -229,6 +238,7 @@ public class HttpClient implements Closeable {
     }
 
     private static InfowayApiException restFailure(int ret, String msg, String traceId) {
+        ret = RestErrorCode.classify(ret, msg);
         if (ret == 401) {
             return new InfowayAuthException(msg);
         }
@@ -238,6 +248,12 @@ public class HttpClient implements Closeable {
             return InfowayRateLimitException.rest(ret, msg, traceId);
         }
         return InfowayApiException.ofRest(ret, msg, traceId);
+    }
+
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("InfowayClient is closed");
+        }
     }
 
     private JsonElement parseJson(String text) {
@@ -309,10 +325,19 @@ public class HttpClient implements Closeable {
         return apiKey;
     }
 
+    /**
+     * Rejects later calls and cancels in-flight ones. Idempotent.
+     * The shared OkHttp dispatcher stays up for other clients.
+     */
     @Override
     public void close() {
-        client.dispatcher().executorService().shutdown();
-        client.connectionPool().evictAll();
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        for (Call call : calls) {
+            call.cancel();
+        }
+        calls.clear();
     }
 
     /**

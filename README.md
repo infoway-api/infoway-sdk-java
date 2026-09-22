@@ -6,18 +6,37 @@
 
 **English** | [中文](README_CN.md)
 
-Official Java SDK for the [Infoway](https://infoway.io) real-time financial data API. Supports stocks (HK, US, CN, JP, KS, IN, TW), crypto, and common market data via REST and WebSocket.
+Official Infoway Java SDK for REST market data, fundamentals, and WebSocket streams.
 
-Full walkthrough with copy-paste examples: [USAGE.md](USAGE.md) · [使用说明](USAGE_CN.md).
+| Item | Description |
+| --- | --- |
+| Artifact | `io.infoway:infoway-sdk:0.3.0` |
+| Runtime | Java 21+ (OkHttp 4.x, Gson, SLF4J) |
+| REST | `https://data.infoway.io` |
+| Quotes WebSocket | `wss://data.infoway.io/ws` |
+| News WebSocket | `wss://data.infoway.io/news` |
+| Rate limits | [REST](https://docs.infoway.io/en-docs/getting-started/api-limitation/rest-api-limitation) · [WebSocket](https://docs.infoway.io/en-docs/getting-started/api-limitation/websocket-limitation) |
+| Error codes | [REST](https://docs.infoway.io/en-docs/getting-started/error-codes/rest-api-error-codes) · [WebSocket](https://docs.infoway.io/en-docs/getting-started/error-codes/websocket-error-codes) |
+| Endpoints | [Endpoints](https://docs.infoway.io/en-docs/getting-started/endpoints) |
 
-> **Upgrade to 0.3.0.** Earlier releases (including the 0.1.0 shown by older docs) mis-handled
-> most error responses and sent wrong parameters on every `basic()` call. See
-> [What changed in 0.3.0](#what-changed-in-030) and [0.2.0](#what-changed-in-020) before
-> upgrading — the `basic()` signatures changed in 0.2.0.
+If `apiKey` is omitted, the SDK reads `INFOWAY_API_KEY`. Close `InfowayClient` when finished.
 
-## Installation
+## Contents
 
-### Maven
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Symbols](#symbols)
+- [Client](#client)
+- [REST](#rest)
+- [Typed models](#typed-models)
+- [WebSocket](#websocket)
+- [Error codes](#error-codes)
+- [Changelog](#changelog)
+- [REST paths](#rest-paths)
+
+## Install
+
+Maven:
 
 ```xml
 <dependency>
@@ -27,83 +46,112 @@ Full walkthrough with copy-paste examples: [USAGE.md](USAGE.md) · [使用说明
 </dependency>
 ```
 
-### Gradle
+Gradle:
 
 ```groovy
 implementation 'io.infoway:infoway-sdk:0.3.0'
 ```
 
-## Quick Start
+## Quick start
 
 ```java
 import io.infoway.sdk.InfowayClient;
 import io.infoway.sdk.KlineType;
-import com.google.gson.JsonElement;
 
-// Create client
-InfowayClient client = InfowayClient.builder()
-    .apiKey("YOUR_API_KEY")
-    .build();
-
-// Real-time trade data
-JsonElement trades = client.stock().getTrade("AAPL.US");
-System.out.println(trades);
-
-// K-line data
-JsonElement klines = client.crypto().getKline("BTCUSDT", KlineType.DAY, 100);
-
-// Market temperature
-JsonElement temp = client.market().getTemperature("HK,US");
-
-// Plate (sector) data
-JsonElement industry = client.plate().getIndustry("HK", 10);
-
-// Stock info
-JsonElement company = client.stockInfo().getCompany("AAPL.US");
-
-// Quota for the current key
-JsonElement pkg = client.packages().getInfo();
-
-// Clean up
-client.close();
+try (InfowayClient client = InfowayClient.builder()
+        .apiKey(System.getenv("INFOWAY_API_KEY"))
+        .build()) {
+    System.out.println(client.stock().getTrade("AAPL.US"));
+    System.out.println(client.crypto().getKline("BTCUSDT", KlineType.DAY, 30));
+    System.out.println(client.packages().getInfo());
+}
 ```
 
-## REST API
+## Symbols
 
-### Market Data
+| Market | Format | Valid | Invalid |
+| --- | --- | --- | --- |
+| US | `{code}.US` | `AAPL.US` | `AAPL` |
+| Hong Kong | 5-digit + `.HK` | `00700.HK` | `700.HK` |
+| Shanghai | `{code}.SH` | `600519.SH` | `600519.CN` |
+| Shenzhen | `{code}.SZ` | `000001.SZ` | `000001.CN` |
+| Japan | `{code}.JP` | `7203.JP` | |
+| Korea | `{code}.KS` | `005930.KS` | |
+| India | `{code}.IN` | `RELIANCE.IN` | |
+| Taiwan | `{code}.TW` | `2330.TW` | |
+| Crypto | Pair | `BTCUSDT` | |
+| FX | Pair | `USDJPY` | |
 
-Available for all markets: `client.stock()`, `client.crypto()`, `client.japan()`, `client.india()`, `client.korea()`, `client.taiwan()`, `client.common()`.
+`basic()` / `financial()` take a product `type` such as `STOCK_US` or `CRYPTO`, not a market code like `US`.
+
+## Client
+
+| Method | Default | Description |
+| --- | --- | --- |
+| `apiKey(key)` | `INFOWAY_API_KEY` | API key |
+| `baseUrl(url)` | `https://data.infoway.io` | REST base URL |
+| `timeout(secs)` | `15` | Per-request timeout (seconds) |
+| `maxRetries(n)` | `3` | Retry count |
+
+| Client | Use |
+| --- | --- |
+| `stock()` / `crypto()` / `japan()` / `india()` / `korea()` / `taiwan()` / `common()` | Trade, depth, candles |
+| `basic()` / `packages()` | Symbols, calendar, plan |
+| `market()` / `plate()` | Overview, sectors |
+| `stockInfo()` / `financial()` | Fundamentals, statements |
+
+Prefer enums: `KlineType`, `SymbolType`, `Market`, `Lang`, `NewsLang`, `PeriodType`, `WsBusiness`, `RankSort`, `SortOrder`, `ScheduleType`. String overloads remain.
+
+## REST
+
+Join symbols with commas. Rate limits: [REST API Limitation](https://docs.infoway.io/en-docs/getting-started/api-limitation/rest-api-limitation).
+
+### Quotes
+
+Same methods on `stock` / `crypto` / `japan` / `india` / `korea` / `taiwan` / `common`.
 
 | Method | Description |
-|--------|-------------|
-| `getTrade(codes)` | Real-time trade data |
-| `getDepth(codes)` | Order book depth |
-| `getKline(codes, type, count)` | K-line / candlestick data |
-| `getKline(codes, type, count, timestamp)` | Same, ending at a unix-seconds timestamp (minute/hour bars) |
+| --- | --- |
+| `getTrade(codes)` | Latest trade |
+| `getDepth(codes)` | Order book |
+| `getKline(codes, type, count)` | Candles |
+| `getKline(codes, type, count, timestamp)` | Candles ending at a unix-seconds timestamp (minute / hour) |
 
-### Basic Info
+Trade fields: `s` symbol, `p` price, `v` volume, `vw` turnover, `t` milliseconds, `td` side (`0` / `1` buy / `2` sell). Candles are under `respList`; `t` is seconds. Up to 500 bars per symbol; multi-symbol calls return 2 bars each.
 
 ```java
-// type is one of STOCK_US STOCK_CN STOCK_HK STOCK_JP STOCK_KS STOCK_IN STOCK_TW
-// CRYPTO FOREX FUTURES ENERGY METAL INDICES
-client.basic().getSymbols(SymbolType.STOCK_US);              // Symbol list
-client.basic().getSymbols("STOCK_US", "AAPL.US,TSLA.US");    // …restricted to codes
-client.basic().getSymbolInfo("STOCK_US", "AAPL.US");         // Symbol details
-client.basic().getStockDetail(SymbolType.STOCK_US, "AAPL.US"); // Single-name profile
-client.basic().getAdjustmentFactors("AAPL.US", "US", "20260801", "20260815");
-client.basic().getTradingDays("US", "20260801", "20260815"); // Trading calendar
-client.basic().getTradingSchedule();                         // Sessions / holidays (no market filter)
-client.basic().getTradingScheduleByType(ScheduleType.ENERGY); // ENERGY / FOREX / FUTURES / METAL / INDICES
-client.basic().getMarkets();                                 // Per-market session table
-client.packages().getInfo();                                 // Quota: packageName, expireTime, apiNumPerSec, …
+client.stock().getTrade("AAPL.US,TSLA.US");
+client.crypto().getDepth("BTCUSDT");
+client.korea().getTrade("005930.KS");
+client.taiwan().getTrade("2330.TW");
+client.crypto().getKline("BTCUSDT", KlineType.MIN_1, 100);
 ```
 
-Dates are `YYYYMMDD` strings. Every parameter above is required by the server: sending
-`market=US` to `getSymbols` returns HTTP 400 `Required parameter 'type' is not present.`
-`getTradingSchedule("US")` is the same as the no-arg call. Passing `SymbolType.STOCK_US`
-to `getTradingScheduleByType` throws `IllegalArgumentException` before the request.
+| Enum | Value | Interval |
+| --- | --- | --- |
+| `MIN_1` / `MIN_5` / `MIN_15` / `MIN_30` | 1–4 | Minutes |
+| `HOUR_1` / `HOUR_2` / `HOUR_4` | 5–7 | Hours |
+| `DAY` / `WEEK` / `MONTH` / `QUARTER` / `YEAR` | 8–12 | Daily and above |
 
-### Market Overview
+### Basic info
+
+Dates use `YYYYMMDD`. `getTradingHours` is deprecated; use `getTradingSchedule`. `getTradingScheduleByType` accepts `ENERGY` / `FOREX` / `FUTURES` / `METAL` / `INDICES`.
+
+```java
+client.basic().getSymbols(SymbolType.STOCK_US);
+client.basic().getSymbolInfo(SymbolType.STOCK_US, "AAPL.US");
+client.basic().getStockDetail(SymbolType.STOCK_US, "AAPL.US");
+client.basic().getAdjustmentFactors("AAPL.US", Market.US, "20260801", "20260815");
+client.basic().getTradingDays(Market.US, "20260801", "20260815");
+client.basic().getTradingSchedule();
+client.basic().getTradingScheduleByType(ScheduleType.ENERGY);
+client.basic().getMarkets();
+client.packages().getInfo();
+```
+
+`packages().getInfo()` returns `packageName`, `expireTime`, `apiNumPerSec`, `maxWsConNum`, `maxNum`, `maxYearHisData`, `allWsNum`.
+
+### Overview / sectors / stock info / financials
 
 ```java
 client.market().getTemperature(Lang.ZH_CN, Market.HK, Market.US);
@@ -114,34 +162,21 @@ client.market().getLeaders(Market.US, 10);
 client.market().getOverview(Market.US, Lang.ZH_CN);
 client.market().getRankCategories(Market.US);
 client.market().getRank(Market.US, "all", RankSort.CHG, SortOrder.DESC, 30, 0, Lang.EN);
-```
 
-### Plate (Sector)
+client.plate().getIndustry(Market.HK, 200);
+client.plate().getConcept("HK", 100);
+client.plate().getMembers("IN20293.HK", 0, 50);
+client.plate().getIntro("IN20293.HK");
+client.plate().getChart("HK", 50);
 
-```java
-client.plate().getIndustry("HK", 200);     // Industry sectors
-client.plate().getConcept("HK", 100);      // Concept sectors
-client.plate().getMembers("IN20293.HK", 0, 50); // Sector members
-client.plate().getIntro("IN20293.HK");     // Sector intro
-client.plate().getChart("HK", 50);         // Sector chart
-```
+client.stockInfo().getValuation("AAPL.US");
+client.stockInfo().getRatings("AAPL.US");
+client.stockInfo().getCompany("AAPL.US", Lang.ZH_CN);
+client.stockInfo().getPanorama("AAPL.US");
+client.stockInfo().getConcepts("AAPL.US");
+client.stockInfo().getEvents("AAPL.US", 20);
+client.stockInfo().getDrivers("AAPL.US");
 
-### Stock Info
-
-```java
-client.stockInfo().getValuation("AAPL.US"); // Valuation
-client.stockInfo().getRatings("AAPL.US");   // Analyst ratings
-client.stockInfo().getCompany("AAPL.US");   // Company info
-client.stockInfo().getPanorama("AAPL.US");   // Overview
-client.stockInfo().getConcepts("AAPL.US");   // Concepts
-client.stockInfo().getEvents("AAPL.US", 20); // Events
-client.stockInfo().getDrivers("AAPL.US");    // Drivers
-client.stockInfo().getCompany("00700.HK", "zh-CN"); // Optional lang=en|zh-CN
-```
-
-### Financials
-
-```java
 client.financial().getEarningStatus("AAPL.US", SymbolType.STOCK_US);
 client.financial().getIncomeStatement("AAPL.US", SymbolType.STOCK_US, PeriodType.FQ);
 client.financial().getRevenue("AAPL.US", SymbolType.STOCK_US);
@@ -153,263 +188,170 @@ client.financial().getDividendPayout("AAPL.US", SymbolType.STOCK_US);
 client.financial().getEarnings("AAPL.US", SymbolType.STOCK_US, PeriodType.FQ);
 ```
 
-## WebSocket
+Rank `key` values come from `getRankCategories`. Financial methods require `symbol` and `type`. `period_type`: `fq` quarter, `fy` year, `fh` half-year. Optional stock-info `lang`: `en` / `zh-CN`.
+
+## Typed models
+
+Default return type is `JsonElement`. Use `getTradeParsed` / `getDepthParsed` / `getKlineParsed` for normalized models.
 
 ```java
-import io.infoway.sdk.InfowayWebSocket;
+List<Trade> trades = client.crypto().getTradeParsed("BTCUSDT");
+List<Kline> bars = client.crypto().getKlineParsed("BTCUSDT", KlineType.MIN_1, 20);
+```
 
+| Raw | Normalized |
+| --- | --- |
+| Price / volume as strings | `BigDecimal` |
+| Trade / depth `t` in ms; candle `t` in seconds | `Instant` |
+| REST `pc` / WS `pfr` (`"0.03%"`) | `changePercent = 0.0003` |
+| Candle `respList` | `List<Kline>` |
+| Book `a`/`b` as `[[price…],[qty…]]` | `List<DepthLevel>` |
+| `vw` | `turnover` |
+
+## WebSocket
+
+### Quotes
+
+`business` must match the symbol market. Callbacks receive `data`. 60 frames per minute per connection (subscribe, unsubscribe, heartbeat). See [WebSocket Limitation](https://docs.infoway.io/en-docs/getting-started/api-limitation/websocket-limitation). Subscriptions issued before `connect()` are sent after open.
+
+```java
 InfowayWebSocket ws = InfowayWebSocket.builder()
-    .apiKey("YOUR_API_KEY")                // omit to read INFOWAY_API_KEY
-    .business(WsBusiness.CRYPTO)           // STOCK | JAPAN | INDIA | KOREA | TAIWAN | CRYPTO | COMMON
-    .printFrames(true)                     // optional; default false (DEBUG only)
-    .onTrade(data -> System.out.println(data.get("s") + " " + data.get("p")))
-    .onDepth(data -> System.out.println("Depth: " + data))
-    .onKline(data -> System.out.println("Kline: " + data))
-    .onError(err -> System.err.println("Error: " + err.getMessage()))
-    .onReconnect(() -> System.out.println("Reconnected"))
-    .build();
+        .apiKey(System.getenv("INFOWAY_API_KEY"))
+        .business(WsBusiness.CRYPTO)
+        .printFrames(false)
+        .onTrade(data -> System.out.println(data.get("s") + " " + data.get("p")))
+        .onDepth(data -> System.out.println(data.get("s")))
+        .onKline(data -> System.out.println(data.get("s")))
+        .onError(err -> System.err.println(err.getMessage()))
+        .build();
 
 ws.connect();
-ws.subscribeTrade("BTCUSDT,ETHUSDT");      // one frame, all symbols
-ws.subscribeTrade("AAPL.US", true);        // includeTy=true adds equity trade-type `ty`
+ws.subscribeTrade("BTCUSDT,ETHUSDT");
+ws.subscribeDepth("BTCUSDT");
 ws.subscribeKline("BTCUSDT", KlineType.MIN_1);
-
-// Later...
 ws.unsubscribeKline("BTCUSDT", KlineType.MIN_1);
 ws.close();
 ```
 
-Callbacks receive the **`data` payload**, matching what the REST layer returns — trade pushes
-arrive as `{"s","p","v","vw","t","td"}`, not wrapped in `{"code":10002,"data":{…}}`.
+Equity trade types: `subscribeTrade(codes, true)` adds `ty`.
 
-Things the server does that will otherwise look like SDK bugs:
+| Behavior | Description |
+| --- | --- |
+| Heartbeat | `10010` every 30 seconds; server does not reply |
+| Reconnect | Replays the current subscription set |
+| `onReconnect` | After a later successful open |
+| `onDisconnect` | Unexpected drop only. `close()` does not fire it |
+| HTTP 401 | Stops reconnecting |
 
-| Behaviour | What it means |
-|-----------|---------------|
-| A plain-text first frame `You have permission to subscribe to all market data` | Sent on `business=stock`. The SDK skips non-JSON frames. |
-| `{"code":200,"msg":"ws connect success"}` | Welcome frame, not an error. |
-| `{"code":10001,"msg":"ok"}` then silence | An ack only means *accepted*. A wrong `business` (e.g. subscribing `AAPL.US` on `crypto`), an unknown symbol, or a closed market all ack and then push nothing. Pick the `business` that matches the market. |
-| Heartbeats are never answered | The server sends no reply to `10010`. Never treat a missing ack as a dead connection. |
-| Connection dropped after many frames | The limit is **60 frames/minute/connection** (subscribes + unsubscribes + heartbeats). Always merge symbols into one comma-separated `codes` string. |
-| HTTP 401 on connect | Wrong key, or the key has no access to that channel. The SDK raises `InfowayAuthException` and **stops reconnecting** instead of hammering the gateway. |
-| `onReconnect` on the first open | It fires only after a later successful open. `onDisconnect` is unexpected drop only — `close()` does not fire it and cancels backoff. |
-| A topic comes back after unsubscribe | The client keeps the **desired** set. Unsubscribe is not replayed; one kline interval can be dropped without clearing the others. |
+| Dir | Code | Description |
+| --- | --- | --- |
+| out | 10000 / 10003 / 10006 | Subscribe trade / depth / kline |
+| out | 11000 / 11001 / 11002 | Unsubscribe |
+| out | 10010 | Heartbeat (`ack=1` yields 10011) |
+| in | 10001 / 10004 / 10007 | Subscribe ack |
+| in | 10002 / 10005 / 10008 | Push |
+| in | 11010 | Unsubscribe ack |
+| in | 200 | Connected |
+
+An ack means the request was accepted. A wrong `business`, unknown symbol, or closed market still acks and then stays silent. Merge symbols into one comma-separated string.
 
 ### News
 
-News is a separate endpoint (`wss://data.infoway.io/news`) with its own entitlement:
+`wss://data.infoway.io/news` requires a separate entitlement. One news connection per key.
 
 ```java
-import io.infoway.sdk.InfowayNewsWebSocket;
-
 InfowayNewsWebSocket news = InfowayNewsWebSocket.builder()
-    .apiKey("YOUR_API_KEY")
-    .lang(NewsLang.EN)                     // EN ZH_HANS ZH_HANT JA KO …
-    .printFrames(true)                     // optional; default false
-    .onNews(item -> System.out.println(item.get("title").getAsString()))
-    .onNewsParsed(item -> System.out.println(item.title()))
-    .onError(err -> System.err.println(err.getMessage()))
-    .build();
-
+        .apiKey(System.getenv("INFOWAY_API_KEY"))
+        .lang(NewsLang.ZH_HANS)
+        .onNews(item -> System.out.println(item.get("title")))
+        .onNewsParsed(item -> System.out.println(item.title()))
+        .build();
 news.connect();
-news.unsubscribe();                        // code 11020
-// later
+news.unsubscribe();
+news.subscribe(NewsLang.EN);
 news.close();
 ```
 
-Push fields: `dk` (dedup key), `country`, `lang`, `route`, `title`, `published` (epoch **seconds**),
-`urgency` (lower = more urgent), `provider`, `symbols[]`, `link`, `content`, `sd` (summary).
-Subscribing again replaces the language; `unsubscribe()` sends code 11020. One connection per key.
-A key without the news entitlement is rejected with HTTP 401 during the handshake.
+| Dir | Code | Description |
+| --- | --- | --- |
+| out | 10020 / 11020 | Subscribe / unsubscribe |
+| in | 10021 / 10022 | Ack / push |
 
-### Typed models (optional)
+Fields: `dk`, `country`, `lang`, `route`, `title`, `published` (seconds), `urgency`, `provider`, `symbols[]`, `link`, `content`, `sd`. A later subscribe replaces the language.
 
-Raw `JsonElement` stays the default. When you want the server's quirks absorbed:
+## Error codes
 
-```java
-import io.infoway.sdk.model.*;
-
-List<Trade> trades = client.crypto().getTradeParsed("BTCUSDT");
-List<Depth> books  = client.crypto().getDepthParsed("BTCUSDT");
-List<Kline> bars   = client.crypto().getKlineParsed("BTCUSDT", KlineType.MIN_1, 100);
-
-ws.setOnKline(data -> handle(Normalizer.kline(data)));
-```
-
-| On the wire | Typed model |
-|-------------|-------------|
-| prices/volumes as strings (`"305.771"`) | `BigDecimal` |
-| `t`: number of **milliseconds** (trade/depth) vs string of **seconds** (kline) | `Instant`, decided per field |
-| change percent: `pc` (REST) / `pfr` (WS), value `"0.03%"` | `changePercent` = `0.0003` |
-| kline nested in `respList` | flattened list |
-| depth `a`/`b` as transposed columns `[[price…],[qty…]]` | `List<DepthLevel>` of `(price, quantity)` |
-| `vw` — the traded **amount**, not a VWAP | `turnover` |
-
-### WebSocket Codes
-
-Client → server:
-
-| Code | Name | Description |
-|------|------|-------------|
-| 10000 | SUB_TRADE | Subscribe trade |
-| 10003 | SUB_DEPTH | Subscribe depth |
-| 10006 | SUB_KLINE | Subscribe kline (payload `data.arr=[{codes, type}]`) |
-| 10010 | HEARTBEAT | Heartbeat keepalive (server replies 10011 only if client sends `ack=1`) |
-| 11000 | UNSUB_TRADE | Unsubscribe trade |
-| 11001 | UNSUB_DEPTH | Unsubscribe depth |
-| 11002 | UNSUB_KLINE | Unsubscribe kline |
-| 10020 | SUB_NEWS | Subscribe news (on the `/news` endpoint) |
-| 11020 | UNSUB_NEWS | Unsubscribe news |
-
-Server → client:
-
-| Code | Name | Description |
-|------|------|-------------|
-| 10001 | SUB_TRADE_ACK | Trade subscribe acknowledgement |
-| 10002 | PUSH_TRADE | **Real-time trade push** |
-| 10004 | SUB_DEPTH_ACK | Depth subscribe acknowledgement |
-| 10005 | PUSH_DEPTH | **Real-time depth push** |
-| 10007 | SUB_KLINE_ACK | Kline subscribe acknowledgement |
-| 10008 | PUSH_KLINE | **Real-time kline push** |
-| 10011 | HEART_APPLY | Heartbeat ack (only when the client sent `ack=1`) |
-| 11010 | UNSUB_ACK | Unsubscribe acknowledgement (trade / depth / kline / news) |
-| 10021 | SUB_NEWS_ACK | News subscribe acknowledgement |
-| 10022 | PUSH_NEWS | **Real-time news push** |
-| 200 | — | Welcome frame `{"code":200,"msg":"ws connect success"}` |
-
-Server error frames (`{"code":5xx,"msg":"...","traceId":"..."}`) go to `onError`. The stock service sometimes prefixes them with `Subscribe fail:`; the SDK strips that.
-
-| Code | Name | Description |
-|------|------|-------------|
-| 500 | SERVER_ERROR | Internal error |
-| 501 / 502 | Rate limit | Raised as `InfowayRateLimitException` (501 = 60 frames/min) |
-| 505 / 516 | Product quota | Per-connection / all connections for the key |
-| 506 / 507 | PARAM_ERROR / PARAM_LOST | Bad or missing fields |
-| 508–511 | API key | Expired / invalid / empty / blacklisted |
-| 512 / 513 / 514 | Conn / heartbeat / URL | 513 is followed by a server close |
-| 515 | PARAM_NOT_JSON | Inbound text was not JSON |
-| 517–521 | Handshake | Missing key / no entitlement; 519/520 differ on korea, taiwan, news |
-
-### K-line Types
-
-| Enum | Value | Description |
-|------|-------|-------------|
-| MIN_1 | 1 | 1 minute |
-| MIN_5 | 2 | 5 minutes |
-| MIN_15 | 3 | 15 minutes |
-| MIN_30 | 4 | 30 minutes |
-| HOUR_1 | 5 | 1 hour |
-| HOUR_2 | 6 | 2 hours |
-| HOUR_4 | 7 | 4 hours |
-| DAY | 8 | Daily |
-| WEEK | 9 | Weekly |
-| MONTH | 10 | Monthly |
-| QUARTER | 11 | Quarterly |
-| YEAR | 12 | Yearly |
-
-## Configuration
-
-| Builder Method | Default | Description |
-|---------------|---------|-------------|
-| `apiKey(key)` | `INFOWAY_API_KEY` env | API key |
-| `baseUrl(url)` | `https://data.infoway.io` | Base URL |
-| `timeout(secs)` | `15` | Request timeout (seconds) |
-| `maxRetries(n)` | `3` | Max retries |
-
-## Error Handling
+REST uses `ret`. WebSocket uses `code`. `508`–`514` mean different things on each side. Full tables: [REST API Error Codes](https://docs.infoway.io/en-docs/getting-started/error-codes/rest-api-error-codes) and [WebSocket Error Codes](https://docs.infoway.io/en-docs/getting-started/error-codes/websocket-error-codes).
 
 ```java
-import io.infoway.sdk.exception.*;
-
 try {
     client.stock().getTrade("INVALID");
 } catch (InfowayAuthException e) {
-    // 401 Unauthorized (or ret=401)
-    System.err.println("Auth failed: " + e.getMsg());
+    System.err.println(e.getMsg());
 } catch (InfowayRateLimitException e) {
-    // HTTP 429, REST ret 501/502, or HTTP 200 with {"detail":"Rate limit exceeded"}
-    System.err.println("Rate limited [" + e.getRet() + " " + e.getErrorName() + "]: " + e.getMsg());
+    System.err.println(e.getRet() + " " + e.getMsg());
 } catch (InfowayApiException e) {
-    // getErrorName() is RestErrorCode on HTTP, WsErrorCode on sockets (508–514 differ)
     System.err.println(e.getMessage());
-    System.err.println("Trace ID: " + e.getTraceId());
-} catch (InfowayTimeoutException e) {
-    // Request timeout
-    System.err.println("Timeout: " + e.getMessage());
-} catch (InfowayIoException e) {
-    // Retries exhausted (network / I/O)
-    System.err.println("IO: " + e.getMessage());
+    System.err.println(e.getTraceId());
 }
 ```
 
-`InfowayRateLimitException` extends `InfowayApiException`, so existing catch blocks keep working.
-`getMessage()` looks like `[508 PRODUCT_NOT_EXISTS] All product not exists (trace: …)` on REST
-and `[508 APIKEY_EXPIRED] …` on WebSocket — same number, different enum (`RestErrorCode` vs
-`WsErrorCode`). Do not decode REST `ret` with `WsErrorCode`. REST limits: **1200 requests/minute/key**;
-K-lines are capped at 500 bars per symbol, and a multi-symbol `getKline` is silently truncated to 2
-bars per symbol by the server. A forged key is `InfowayAuthException` `[401] Token invalid` on REST
-and handshake HTTP 401 (no reconnect) on both sockets.
+REST budget is about 1200 calls/minute/key. HTTP 429, `ret` 501/502, or `{"detail":"Rate limit exceeded"}` are retried. An invalid key raises `InfowayAuthException` on REST; WebSocket handshake HTTP 401 does not reconnect.
 
-REST `ret` (`RestErrorCode`): 200 success; 400 commonApi bad params; 500 uncaught **or** production
-quote errors that still ship as 500 + English `msg`; 501/502 rate limit; 503 too many bars; 505 too
-many symbols; 506/507 bad/missing field; **508 `PRODUCT_NOT_EXISTS`**; 509 token permission expired;
-513 kline history older than the package; **514 `NO_PERMISSION`**. `/common/basic/*` only uses
-200 / 400 / 500. Production quote errors (2026-09-21) are still HTTP 200 + `ret=500` with the
-enum text in `msg`.
+| REST `ret` | Description |
+| --- | --- |
+| 200 | Success |
+| 400 | Bad request |
+| 500 | Server error |
+| 501 / 502 | Rate limit |
+| 503 | Candle count exceeded |
+| 505 | Symbol count exceeded |
+| 506 / 507 | Invalid / missing parameter |
+| 508 | Symbol not found |
+| 509 | Permission expired |
+| 513 | Timestamp outside plan history |
+| 514 | No permission |
 
-## What changed in 0.3.0
+| WebSocket `code` | Description |
+| --- | --- |
+| 501 / 502 | Rate limit |
+| 505 / 516 | Subscription count exceeded |
+| 506 / 507 | Invalid / missing parameter |
+| 508–511 | API key expired / invalid / empty / blacklisted |
+| 512 | Connection count exceeded |
+| 513 | Heartbeat timeout |
+| 515 | Not JSON |
+| 517–521 | Handshake failed |
 
-- Current Maven coordinate is `io.infoway:infoway-sdk:0.3.0`.
-- `packages().getInfo()`, `getTradingScheduleByType(ScheduleType)`, `InfowayIoException`.
-- `RestErrorCode` / `WsErrorCode` / `getErrorName()`; REST 508 is `PRODUCT_NOT_EXISTS`, WS 508 is `APIKEY_EXPIRED`.
-- Typed params: `Market`, `Lang`, `NewsLang`, `PeriodType`, `WsBusiness`, `RankSort`, `SortOrder`, `ScheduleType`.
-- `printFrames` defaults to false (DEBUG only). REST and WebSocket both read `INFOWAY_API_KEY`.
-- News `onNewsParsed`. Korea / Taiwan / financial clients.
+## Changelog
 
-## What changed in 0.2.0
+**0.3.0** — `packages().getInfo()`, `getTradingScheduleByType`, `InfowayIoException`, Korea / Taiwan / financial clients, `RestErrorCode` / `WsErrorCode`, enum parameters, `printFrames` off by default, news `onNewsParsed`.
 
-**Fixes**
+**0.2.0** — `basic()` parameters fixed (breaking):
 
-- Error responses are no longer swallowed. Before, anything without a `ret`/`code` field —
-  HTTP 400 problem+json, HTTP 404, HTTP 429, `{"detail":"Rate limit exceeded"}` — was treated as
-  success and returned `null`. Gateway HTML pages threw `JsonSyntaxException` and empty 502 bodies
-  threw `NullPointerException`.
-- Responses without a `data` key (e.g. `plate().getIntro(...)`) return the whole body instead of `null`.
-- WebSocket callbacks receive `data`, aligned with REST. `msg.get("p")` used to be `null`.
-- `unsubscribeKline` now sends `klineTypes`; without it the server dropped **all** intervals of that symbol.
-- Subscriptions issued before the socket is open are no longer discarded silently.
-- An invalid key now raises `InfowayAuthException` and stops reconnecting instead of retrying forever.
-- Server error frames (e.g. `506`/`507`) reach `onError` instead of being logged at debug and dropped.
-
-**Breaking changes** — every `basic()` method used to send parameters the server rejects and
-returned `null` 100% of the time:
-
-| Before | Now |
-|--------|-----|
-| `getSymbols("US")` | `getSymbols("STOCK_US")` / `getSymbols(SymbolType.STOCK_US)` |
-| `getSymbolInfo("AAPL.US")` | `getSymbolInfo("STOCK_US", "AAPL.US")` |
+| Old | New |
+| --- | --- |
+| `getSymbols("US")` | `getSymbols(SymbolType.STOCK_US)` |
+| `getSymbolInfo("AAPL.US")` | `getSymbolInfo(SymbolType.STOCK_US, "AAPL.US")` |
 | `getAdjustmentFactors("AAPL.US")` | `getAdjustmentFactors("AAPL.US", "US", "20260801", "20260815")` |
 | `getTradingDays("US")` | `getTradingDays("US", "20260801", "20260815")` |
-| `getTradingHours("US")` | `getTradingSchedule("US")` (old name kept as a deprecated alias) |
+| `getTradingHours("US")` | `getTradingSchedule()` |
 
-**New**
+WebSocket callbacks now receive `data`. `unsubscribeKline` is per interval. An invalid key stops reconnecting.
 
-- `InfowayNewsWebSocket` — the `/news` channel (`onNews` / `onNewsParsed`).
-- `io.infoway.sdk.model` — typed `Trade`/`Depth`/`Kline`/`NewsItem` plus `Normalizer`, and
-  `getTradeParsed` / `getDepthParsed` / `getKlineParsed` on every market client.
-- `InfowayRateLimitException`, `SymbolType`. String overloads still work.
+## REST paths
 
-## Requirements
+`{market}` = `stock` / `crypto` / `japan` / `india` / `korea` / `taiwan` / `common`. Full list: [Endpoints](https://docs.infoway.io/en-docs/getting-started/endpoints).
 
-- Java 21+
-- Dependencies: OkHttp 4.x, Gson, SLF4J
-
-## Resources
-
-- Website: [https://infoway.io](https://infoway.io)
-- API Docs: [https://docs.infoway.io](https://docs.infoway.io)
-- Free Trial: [7-day free trial](https://infoway.io)
+| API | Path |
+| --- | --- |
+| Latest trade | `GET /{market}/batch_trade/{codes}` |
+| Order book | `GET /{market}/batch_depth/{codes}` |
+| Candles | `POST /{market}/v2/batch_kline` |
+| Symbols / calendar / financials | `GET /common/basic/*` |
+| Overview / sectors / stock info | `GET /common/v2/basic/*` |
+| Package | `GET /package/info` |
 
 ## License
 
-MIT
+MIT. API key: [infoway.io](https://infoway.io).

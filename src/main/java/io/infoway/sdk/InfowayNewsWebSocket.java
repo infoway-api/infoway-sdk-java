@@ -82,6 +82,8 @@ public class InfowayNewsWebSocket {
     private volatile boolean everConnected;
     /** Set on handshake 401 so {@code onClosed} cannot schedule another connect. */
     private volatile boolean authRejected;
+    /** Set when the server sent a code {@link WsErrorCode#isTerminal} says cannot be retried. */
+    private volatile boolean terminalRejected;
     private volatile long backoffMs = INITIAL_BACKOFF_MS;
     /** Desired language; replayed on every (re)connect, so subscribing before connect works. */
     private volatile String lang;
@@ -119,10 +121,7 @@ public class InfowayNewsWebSocket {
         this.onReconnect = onReconnect;
         this.onDisconnect = onDisconnect;
         this.printFrames = printFrames;
-        this.okClient = new OkHttpClient.Builder()
-                .readTimeout(0, TimeUnit.MILLISECONDS)
-                .retryOnConnectionFailure(false)
-                .build();
+        this.okClient = HttpTransports.webSocket();
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "infoway-news-ws-scheduler");
             t.setDaemon(true);
@@ -134,7 +133,12 @@ public class InfowayNewsWebSocket {
     public void connect() {
         running = true;
         authRejected = false;
+        terminalRejected = false;
         doConnect(0);
+    }
+
+    private boolean giveUp() {
+        return authRejected || terminalRejected;
     }
 
     /**
@@ -168,7 +172,7 @@ public class InfowayNewsWebSocket {
     }
 
     private void doConnect(int attempt) {
-        if (!running || authRejected) return;
+        if (!running || giveUp()) return;
         final int gen;
         synchronized (connectionLock) {
             connectGeneration++;
@@ -237,6 +241,10 @@ public class InfowayNewsWebSocket {
                 }
                 Exception error = WsFrames.toError(msg, text);
                 log.warn("News error frame code={} msg={}", code, error.getMessage());
+                if (WsErrorCode.isTerminal(code)) {
+                    stopTerminal(error);
+                    return;
+                }
                 safeAcceptError(error);
             }
 
@@ -248,7 +256,6 @@ public class InfowayNewsWebSocket {
                     running = false;
                     clearSocket();
                     cancelReconnect();
-                    okClient.dispatcher().cancelAll();
                     log.error("News WebSocket authentication failed (HTTP 401){}",
                             detail.isEmpty() ? "" : ": " + detail);
                     safeRun(onDisconnect, "onDisconnect");
@@ -273,7 +280,7 @@ public class InfowayNewsWebSocket {
 
             @Override
             public void onClosed(WebSocket ws, int code, String reason) {
-                if (!running || authRejected) {
+                if (!running || giveUp()) {
                     clearSocket();
                     return;
                 }
@@ -317,7 +324,7 @@ public class InfowayNewsWebSocket {
             }
             stopHeartbeatLocked();
             webSocket = null;
-            if (dropHandled || !running || authRejected) {
+            if (dropHandled || !running || giveUp()) {
                 return;
             }
             dropHandled = true;
@@ -335,7 +342,7 @@ public class InfowayNewsWebSocket {
 
     private void scheduleReconnect(int attempt) {
         synchronized (connectionLock) {
-            if (!running || authRejected) {
+            if (!running || giveUp()) {
                 return;
             }
             cancelReconnectLocked();
@@ -407,11 +414,25 @@ public class InfowayNewsWebSocket {
             webSocket = null;
         }
         if (ws != null) {
-            ws.close(1000, "Client closing");
+            ws.cancel();
         }
-        scheduler.shutdown();
-        okClient.dispatcher().executorService().shutdown();
-        okClient.connectionPool().evictAll();
+        scheduler.shutdownNow();
+    }
+
+    private void stopTerminal(Exception error) {
+        terminalRejected = true;
+        running = false;
+        WebSocket ws;
+        synchronized (connectionLock) {
+            stopHeartbeatLocked();
+            cancelReconnectLocked();
+            ws = webSocket;
+            webSocket = null;
+        }
+        safeAcceptError(error);
+        if (ws != null) {
+            ws.cancel();
+        }
     }
 
     /** Test hook: shorten keepalive / backoff so lifecycle tests finish quickly. */

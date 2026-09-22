@@ -8,6 +8,12 @@ import io.infoway.sdk.HttpClient;
  *
  * <p>Fields: {@code packageName}, {@code expireTime}, {@code apiNumPerSec},
  * {@code maxWsConNum}, {@code maxNum}, {@code maxYearHisData}, {@code allWsNum}.</p>
+ *
+ * <p>{@code maxNum} is the package's subscription quota. HTTP batch trade / depth / kline
+ * uses a separate server cap, {@code query.max.num} (currently 100) and
+ * {@code query.max.klineMaxNum} (currently 500). A request over that cap is
+ * {@link io.infoway.sdk.RestErrorCode#PRODUCTS_EXCEEDS_LIMIT} or
+ * {@link io.infoway.sdk.RestErrorCode#KLINE_EXCEEDS_LIMIT}, not {@code maxNum}.</p>
  */
 public class PackageClient {
 

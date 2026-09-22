@@ -198,15 +198,37 @@ class HttpClientEnvelopeTest {
 
     @Test
     void ret500StillThrowsApiException() {
-        enqueue(200, "{\"ret\":500,\"msg\":\"All product not exists\",\"traceId\":\"t1\",\"data\":null}");
+        enqueue(200, "{\"ret\":500,\"msg\":\"server error\",\"traceId\":\"t1\",\"data\":null}");
 
         InfowayApiException ex = assertThrows(InfowayApiException.class,
                 () -> client.get("/stock/batch_trade/NOPE"));
         assertEquals(500, ex.getRet());
-        assertEquals("All product not exists", ex.getMsg());
+        assertEquals("server error", ex.getMsg());
         assertEquals("t1", ex.getTraceId());
         assertEquals("SERVER_ERROR", ex.getErrorName());
         assertTrue(ex.getMessage().contains("[500 SERVER_ERROR]"));
+    }
+
+    @Test
+    void ret500WithBusinessMessageUsesTheServiceCode() {
+        enqueue(200, "{\"ret\":500,\"msg\":\"Kline quantity exceeds the limit：500\",\"traceId\":\"k\"}");
+        enqueue(200, "{\"ret\":500,\"msg\":\"Products quantity exceeds the limit：100\",\"traceId\":\"p\"}");
+        enqueue(200, "{\"ret\":500,\"msg\":\"Timestamp limit error,earliest timestamp：1695361437\",\"traceId\":\"t\"}");
+
+        InfowayApiException kline = assertThrows(InfowayApiException.class,
+                () -> client.get("/crypto/v2/batch_kline"));
+        assertEquals(503, kline.getRet());
+        assertEquals("KLINE_EXCEEDS_LIMIT", kline.getErrorName());
+
+        InfowayApiException products = assertThrows(InfowayApiException.class,
+                () -> client.get("/stock/batch_trade/TOO_MANY"));
+        assertEquals(505, products.getRet());
+        assertEquals("PRODUCTS_EXCEEDS_LIMIT", products.getErrorName());
+
+        InfowayApiException time = assertThrows(InfowayApiException.class,
+                () -> client.get("/crypto/v2/batch_kline"));
+        assertEquals(513, time.getRet());
+        assertEquals("TIME_LIMIT_ERROR", time.getErrorName());
     }
 
     @Test

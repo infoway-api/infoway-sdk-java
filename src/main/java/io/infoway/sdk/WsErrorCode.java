@@ -74,4 +74,32 @@ public enum WsErrorCode {
     public static boolean isError(int code) {
         return code >= 500 && code < 10000 && WsCode.fromCode(code) == null;
     }
+
+    /**
+     * Codes a reconnect cannot fix. Heartbeat timeout ({@code 513}) and the
+     * per-minute cap ({@code 501}) stay recoverable; a second news connection
+     * ({@code 520}), a dead key, or a connection cap must not loop.
+     */
+    public static boolean isTerminal(int code) {
+        WsErrorCode known = fromCode(code);
+        if (known == null) {
+            return false;
+        }
+        return switch (known) {
+            case REQUEST_FREQUENCY_DAY_EXCEED,
+                 APIKEY_EXPIRED,
+                 APIKEY_INVALID,
+                 APIKEY_EMPTY,
+                 APIKEY_BLACKLIST,
+                 WS_CONN_EXCEED,
+                 WS_URL_WRONG,
+                 ALL_PRODUCTS_QUANTITY_EXCEED,
+                 WS_HANDSHAKE_APIKEY_MISSING,
+                 WS_HANDSHAKE_APIKEY_NOT_EXIST,
+                 WS_HANDSHAKE_NO_PERMISSION,
+                 PRODUCT_CODE_OR_ALREADY_CONNECTED,
+                 WS_HANDSHAKE_MAX_CONNECTIONS -> true;
+            default -> false;
+        };
+    }
 }

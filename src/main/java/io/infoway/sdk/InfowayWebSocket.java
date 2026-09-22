@@ -97,6 +97,8 @@ public class InfowayWebSocket {
     private volatile boolean everConnected;
     /** Set on handshake 401 so {@code onClosed} cannot schedule another connect. */
     private volatile boolean authRejected;
+    /** Set when the server sent a code {@link WsErrorCode#isTerminal} says cannot be retried. */
+    private volatile boolean terminalRejected;
     private volatile long backoffMs = INITIAL_BACKOFF_MS;
     private ScheduledFuture<?> heartbeatFuture;
     private ScheduledFuture<?> reconnectFuture;
@@ -140,10 +142,7 @@ public class InfowayWebSocket {
         this.onDisconnect = onDisconnect;
         this.printFrames = printFrames;
         this.gson = new Gson();
-        this.okClient = new OkHttpClient.Builder()
-                .readTimeout(0, TimeUnit.MILLISECONDS)
-                .retryOnConnectionFailure(false)
-                .build();
+        this.okClient = HttpTransports.webSocket();
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "infoway-ws-scheduler");
             t.setDaemon(true);
@@ -157,11 +156,16 @@ public class InfowayWebSocket {
     public void connect() {
         running = true;
         authRejected = false;
+        terminalRejected = false;
         doConnect(0);
     }
 
+    private boolean giveUp() {
+        return authRejected || terminalRejected;
+    }
+
     private void doConnect(int attempt) {
-        if (!running || authRejected) return;
+        if (!running || giveUp()) return;
         final int gen;
         synchronized (connectionLock) {
             connectGeneration++;
@@ -221,6 +225,10 @@ public class InfowayWebSocket {
                 if (wsCode == null) {
                     Exception error = WsFrames.toError(msg, text);
                     log.warn("Server error frame code={} msg={}", code, error.getMessage());
+                    if (WsErrorCode.isTerminal(code)) {
+                        stopTerminal(error);
+                        return;
+                    }
                     safeAccept(onError, error, "onError");
                     return;
                 }
@@ -278,7 +286,7 @@ public class InfowayWebSocket {
             public void onClosed(WebSocket ws, int code, String reason) {
                 // Handshake 401 / user close: do not fire onDisconnect or schedule another socket.
                 // A clean server close never calls onFailure — that path must still reconnect.
-                if (!running || authRejected) {
+                if (!running || giveUp()) {
                     clearSocket();
                     return;
                 }
@@ -374,7 +382,7 @@ public class InfowayWebSocket {
             }
             stopHeartbeatLocked();
             webSocket = null;
-            if (dropHandled || !running || authRejected) {
+            if (dropHandled || !running || giveUp()) {
                 return;
             }
             dropHandled = true;
@@ -392,7 +400,7 @@ public class InfowayWebSocket {
 
     private void scheduleReconnect(int attempt) {
         synchronized (connectionLock) {
-            if (!running || authRejected) {
+            if (!running || giveUp()) {
                 return;
             }
             cancelReconnectLocked();
@@ -403,12 +411,27 @@ public class InfowayWebSocket {
         }
     }
 
+    private void stopTerminal(Exception error) {
+        terminalRejected = true;
+        running = false;
+        WebSocket ws;
+        synchronized (connectionLock) {
+            stopHeartbeatLocked();
+            cancelReconnectLocked();
+            ws = webSocket;
+            webSocket = null;
+        }
+        safeAccept(onError, error, "onError");
+        if (ws != null) {
+            ws.cancel();
+        }
+    }
+
     private void rejectAuth(String detail) {
         authRejected = true;
         running = false;
         clearSocket();
         cancelReconnect();
-        okClient.dispatcher().cancelAll();
         log.error("WebSocket authentication failed (HTTP 401){}",
                 detail.isEmpty() ? "" : ": " + detail);
         safeRun(onDisconnect, "onDisconnect");
@@ -676,11 +699,9 @@ public class InfowayWebSocket {
             webSocket = null;
         }
         if (ws != null) {
-            ws.close(1000, "Client closing");
+            ws.cancel();
         }
-        scheduler.shutdown();
-        okClient.dispatcher().executorService().shutdown();
-        okClient.connectionPool().evictAll();
+        scheduler.shutdownNow();
     }
 
     /** Test hook: shorten keepalive / backoff so lifecycle tests finish quickly. */
