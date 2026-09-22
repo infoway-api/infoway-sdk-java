@@ -211,6 +211,10 @@ class WebSocketLifecycleTest {
         assertTrue(first.awaitOpen());
         ws.subscribeKline("BTCUSDT", KlineType.MIN_1);
         ws.subscribeKline("BTCUSDT", KlineType.DAY);
+        // Both subscribes must be on the wire first: awaitOpen() is the server-side latch, so the
+        // client socket may still be null here. Subscribes survive that window (onOpen replays
+        // them), an unsubscribe would just be dropped.
+        awaitUntil(() -> count(codes(first.received), WsCode.SUB_KLINE.getCode()) >= 2);
         ws.unsubscribeKline("BTCUSDT", KlineType.MIN_1);
         awaitUntil(() -> codes(first.received).contains(WsCode.UNSUB_KLINE.getCode()));
 
