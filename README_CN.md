@@ -10,7 +10,7 @@ Infoway 官方 Java SDK。覆盖 REST 行情、基础信息、市场概览、板
 
 | 项目 | 说明 |
 | --- | --- |
-| 坐标 | `io.infoway:infoway-sdk:0.3.0` |
+| 坐标 | `io.infoway:infoway-sdk:0.4.0` |
 | 运行环境 | Java 21+（OkHttp 4.x、Gson、SLF4J） |
 | REST | `https://data.infoway.io` |
 | 行情 WebSocket | `wss://data.infoway.io/ws` |
@@ -42,14 +42,14 @@ Maven：
 <dependency>
     <groupId>io.infoway</groupId>
     <artifactId>infoway-sdk</artifactId>
-    <version>0.3.0</version>
+    <version>0.4.0</version>
 </dependency>
 ```
 
 Gradle：
 
 ```groovy
-implementation 'io.infoway:infoway-sdk:0.3.0'
+implementation 'io.infoway:infoway-sdk:0.4.0'
 ```
 
 ## 快速开始
@@ -324,6 +324,8 @@ REST 限额约 1200 次/分钟/Key。HTTP 429、`ret` 501/502 或 `{"detail":"Ra
 | 517–521 | 握手失败 |
 
 ## 版本变更
+
+**0.4.0** — **破坏性变更。** 参数上限改为请求前在客户端校验：超过 100 个标的抛 `ret` 505，超过 500 根抛 503，多标的且超过 2 根抛 506（此前服务端会静默截断成 2 根并返回 200）。显式传入的空 API Key 不再回落到 `INFOWAY_API_KEY`，且 Key 会被去除首尾空白。`ret=500` 的信封会被重新分类为 501–514。WebSocket 收到终止码后直接停止，不再重连。对已关闭的客户端发起调用会抛错。
 
 **0.3.0** — `packages().getInfo()`、`getTradingScheduleByType`、`InfowayIoException`、韩股 / 台股 / 财务客户端、`RestErrorCode` / `WsErrorCode`、枚举参数、`printFrames` 默认关闭、新闻 `onNewsParsed`。
 

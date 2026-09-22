@@ -55,10 +55,9 @@ public enum RestErrorCode {
     }
 
     /**
-     * Production sometimes wraps a business failure as {@code ret=500} while
-     * {@code msg} is still the English template from {@code ResponceCodeEnum}.
-     * The httpApi service itself puts 503/505/513 on {@code ret}; this keeps
-     * both shapes distinguishable.
+     * A business failure may arrive as {@code ret=500} with the English
+     * template still in {@code msg}, or with 503/505/513 already on
+     * {@code ret}; this keeps both shapes distinguishable.
      *
      * @param ret wire {@code ret}
      * @param msg wire {@code msg}

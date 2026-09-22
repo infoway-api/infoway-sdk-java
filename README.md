@@ -10,7 +10,7 @@ Official Infoway Java SDK for REST market data, fundamentals, and WebSocket stre
 
 | Item | Description |
 | --- | --- |
-| Artifact | `io.infoway:infoway-sdk:0.3.0` |
+| Artifact | `io.infoway:infoway-sdk:0.4.0` |
 | Runtime | Java 21+ (OkHttp 4.x, Gson, SLF4J) |
 | REST | `https://data.infoway.io` |
 | Quotes WebSocket | `wss://data.infoway.io/ws` |
@@ -42,14 +42,14 @@ Maven:
 <dependency>
     <groupId>io.infoway</groupId>
     <artifactId>infoway-sdk</artifactId>
-    <version>0.3.0</version>
+    <version>0.4.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```groovy
-implementation 'io.infoway:infoway-sdk:0.3.0'
+implementation 'io.infoway:infoway-sdk:0.4.0'
 ```
 
 ## Quick start
@@ -324,6 +324,8 @@ REST budget is about 1200 calls/minute/key. HTTP 429, `ret` 501/502, or `{"detai
 | 517–521 | Handshake failed |
 
 ## Changelog
+
+**0.4.0** — **Breaking.** Client-side limits are now enforced before the request: over 100 symbols raises `ret` 505, over 500 bars raises 503, and several symbols with more than 2 bars raises 506 (the server used to truncate to 2 and return 200). An explicitly empty API key is no longer replaced by `INFOWAY_API_KEY`; keys are trimmed. A `ret=500` envelope is reclassified into 501–514. Terminal WebSocket codes stop the client instead of reconnecting. Calling a closed client raises.
 
 **0.3.0** — `packages().getInfo()`, `getTradingScheduleByType`, `InfowayIoException`, Korea / Taiwan / financial clients, `RestErrorCode` / `WsErrorCode`, enum parameters, `printFrames` off by default, news `onNewsParsed`.
 
