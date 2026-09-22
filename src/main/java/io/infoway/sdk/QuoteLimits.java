@@ -6,7 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * HTTP quote caps from {@code infoway-httpApi-server} {@code query.max}.
+ * Server-side caps for HTTP quote requests.
  *
  * <p>These are not the package field {@code maxNum}. That field is a subscription
  * quota (often 600). Trade, depth and kline reject more than

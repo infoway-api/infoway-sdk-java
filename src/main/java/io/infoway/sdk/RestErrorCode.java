@@ -1,8 +1,7 @@
 package io.infoway.sdk;
 
 /**
- * Business {@code ret} values from the HTTP quote service
- * ({@code ResponceCodeEnum} on {@code infoway-httpApi-server}) and the
+ * Business {@code ret} values returned by the HTTP quote API and the
  * {@code 200}/{@code 400}/{@code 500} envelope used by {@code /common/basic/*}.
  *
  * <p>These numbers overlap WebSocket {@link WsErrorCode} for 508–514 but

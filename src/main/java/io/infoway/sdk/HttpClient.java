@@ -163,7 +163,7 @@ public class HttpClient implements Closeable {
      *   <li>body has {@code title} + {@code status} (RFC 7807 problem+json) → {@link InfowayApiException}</li>
      *   <li>{@code ret}/{@code code} present and != 200 → classified with {@link RestErrorCode}
      *       (501/502 → {@link InfowayRateLimitException}). Runs <em>before</em> the HTTP-status
-     *       branch so commonApi HTTP 400 bodies keep their {@code msg}.</li>
+     *       branch so HTTP 400 bodies keep their {@code msg}.</li>
      *   <li>HTTP &gt;= 400 with no business {@code ret} → {@link InfowayApiException} (gateway pages)</li>
      *   <li>success: return {@code body["data"]} when present, otherwise the whole body</li>
      * </ol>
@@ -203,7 +203,7 @@ public class HttpClient implements Closeable {
             throw InfowayApiException.ofHttpStatus(problemStatus, detail, traceId);
         }
 
-        // 5 — business status. commonApi sets HTTP 400/500 with the same ret in the body.
+        // 5 — business status. The API may set HTTP 400/500 with the same ret in the body.
         Integer ret = businessRet(body);
         if (ret != null && ret != 200) {
             throw restFailure(ret, errorMessage(body, responseBody, "API error"), traceId);
